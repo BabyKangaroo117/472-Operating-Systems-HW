@@ -17,8 +17,6 @@
 
 ///////////////////////////// Function Prototypes /////////////////////////
 
-void GenerateRandomIntegers(int *array, size_t size, int min, int max);
-void write_int_array_to_buffer(const int *array, size_t size, char *buffer, size_t buffer_size);
 
 //////////////////////////////////// Main ////////////////////////////////
 
@@ -66,7 +64,7 @@ int main () {
         wait(NULL);
 
         printf("pid: %d \n", pid);
-        
+
         // Detach from shared memory
         if (shmdt(sharedMemory) == -1) {
             perror("shmdt");
