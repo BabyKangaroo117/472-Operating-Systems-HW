@@ -15,14 +15,14 @@ int main() {
     pid_t pid;
     int segment_id, segment_id_2;
     int *randNumSharedMemory;
-    const int randNumSharedMemorySize = MB(10) / sizeof(int); // Number of integers
+    const int randNumSharedMemorySize = MB(100) / sizeof(int); // Number of integers
 
     // Integers for in and out indexes
     int *indexSharedMemory;
 
     // Allocate shared memory segments
     segment_id = shmget(IPC_PRIVATE, randNumSharedMemorySize * sizeof(int), S_IRUSR | S_IWUSR);
-    segment_id_2 = shmget(IPC_PRIVATE, 3 * sizeof(int), S_IRUSR | S_IWUSR); // Extra int for exit signal
+    segment_id_2 = shmget(IPC_PRIVATE, 4 * sizeof(int), S_IRUSR | S_IWUSR); // Extra int for exit signal
 
     // Attach the shared memory segments
     randNumSharedMemory = (int *) shmat(segment_id, NULL, 0);
@@ -35,16 +35,19 @@ int main() {
     indexSharedMemory[0] = 0; // In
     indexSharedMemory[1] = 0; // Out
     indexSharedMemory[2] = 0; // Exit signal
+    indexSharedMemory[3] = 0; // Child time
 
     // Generate the child process
+    time_t start, end;
+    // Track the time it takes to execute the random num task
+    start = clock();
+
     pid = fork();
 
     if (pid < 0) {
         fprintf(stderr, "Fork Failed\n");
         return 1;
     } else if (pid == 0) { // Child process
-        printf("In child process\n");
-
         while (1) {
             int in = indexSharedMemory[0];
             int out = indexSharedMemory[1];
@@ -84,9 +87,11 @@ int main() {
         // Signal completion
         indexSharedMemory[2] = 1; // Set exit signal for the parent
 
-    } else { // Parent process
-        printf("In parent process\n");
+        end = clock();
+        double elapsedTime = (end - start) / CLOCKS_PER_SEC;
+        indexSharedMemory[3] = elapsedTime;
 
+    } else { // Parent process
         for (int i = 0; i < randNumSharedMemorySize; i++) {
             int in = indexSharedMemory[0];
             int out = indexSharedMemory[1];
@@ -125,8 +130,17 @@ int main() {
             }
         }
 
+        printf("\n");
+        end = clock();
+        double elapsedTime = (end - start) / CLOCKS_PER_SEC;
+        printf("Parent process took %f sec \n", elapsedTime);
+
         // Wait for child process to finish
         wait(NULL);
+
+        printf("The child process took %f sec \n", indexSharedMemory[3]);
+
+        printf("Processed %d integers", randNumSharedMemorySize * 2);
 
         // Detach from shared memory
         shmdt(randNumSharedMemory);
