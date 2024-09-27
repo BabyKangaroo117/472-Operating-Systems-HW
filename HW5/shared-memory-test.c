@@ -88,7 +88,7 @@ int main() {
         indexSharedMemory[2] = 1; // Set exit signal for the parent
 
         end = clock();
-        double elapsedTime = (end - start) / CLOCKS_PER_SEC;
+        double elapsedTime = (end - start) / (CLOCKS_PER_SEC/1000);
         indexSharedMemory[3] = elapsedTime;
 
     } else { // Parent process
@@ -132,13 +132,13 @@ int main() {
 
         printf("\n");
         end = clock();
-        double elapsedTime = (end - start) / CLOCKS_PER_SEC;
-        printf("Parent process took %f sec \n", elapsedTime);
+        double elapsedTime = (end - start) / (CLOCKS_PER_SEC/1000);
+        printf("Parent process took %.2f ms \n", elapsedTime);
 
         // Wait for child process to finish
         wait(NULL);
 
-        printf("The child process took %f sec \n", indexSharedMemory[3]);
+        printf("The child process took %.2f ms \n", indexSharedMemory[3]);
 
         printf("Processed %d integers", randNumSharedMemorySize * 2);
 
