@@ -106,6 +106,5 @@ int main() {
         shmctl(segment_id, IPC_RMID, NULL);
         shmctl(segment_id_2, IPC_RMID, NULL);
     }
-
     return 0;
 }

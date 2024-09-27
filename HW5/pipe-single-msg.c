@@ -14,8 +14,6 @@
 
 int main () {
 
-
-
     const int SIZE = MB(0.1);
     char writeBufferOne[SIZE];
     char writeBufferTwo[SIZE];
@@ -142,11 +140,5 @@ int main () {
 
 
     }
-
-
-
-
     return 0;
-
-
 }

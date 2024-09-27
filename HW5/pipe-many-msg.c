@@ -144,14 +144,6 @@ int main () {
     
         // Remove shared memory segments
         shmctl(segment_id, IPC_RMID, NULL);
-
-
     }
-
-
-
-
     return 0;
-
-
 }
