@@ -10,12 +10,11 @@
 #define MB(n) ((n) * 1024 * 1024)
 
 int main() {
-    printf("Test 1\n");
 
     pid_t pid;
     int segment_id, segment_id_2;
     int *randNumSharedMemory;
-    const int randNumSharedMemorySize = MB(100) / sizeof(int); // Number of integers
+    const int randNumSharedMemorySize = MB(10) / sizeof(int); // Number of integers
 
     // Integers for in and out indexes
     int *indexSharedMemory;
@@ -130,9 +129,9 @@ int main() {
             }
         }
 
-        printf("\n");
         end = clock();
         double elapsedTime = (end - start) / (CLOCKS_PER_SEC/1000);
+        printf("\n");
         printf("Parent process took %.2f ms \n", elapsedTime);
 
         // Wait for child process to finish
