@@ -12,10 +12,7 @@ int buffer[BUFFER_SIZE];
 sem_t mutex, empty, data, consumed;
 int myind = 0;
 int count = 0;
-bool waiting[3];
-bool lock;
-int mutexVal;
-int inLine;
+
 void *producer(void *arg) {
     int id = *(int *)arg;
     int item;

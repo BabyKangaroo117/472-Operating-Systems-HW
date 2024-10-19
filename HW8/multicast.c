@@ -10,7 +10,7 @@
 #define CONSUMERS   3
 
 int buffer[BUFFER_SIZE];
-sem_t mutex, producerControl;
+sem_t mutex, producerControl, data;
 int completed = CONSUMERS;
 int myind = 0;
 int count = 0;
@@ -24,8 +24,9 @@ void *producer(void *arg) {
     while (true) {
         item = rand() % 100 + 1; // Generate a random item
         sem_wait(&producerControl);
+        int wait = rand() % CONSUMERS + 1; // Send to a random number of consumers
         // Once all consumers have recieved message, access the buffer.
-        while (completed < CONSUMERS);
+        while (completed < wait); // Wait for the specified number of consumers to finish
         completed = 0;
         sem_wait(&mutex); // Get exclusive access to the buffer
         myind++;
@@ -74,6 +75,7 @@ int main() {
     pthread_t producers[4], consumers[3];
     sem_init(&mutex, 0, 1);
     sem_init(&producerControl, 0, 1);
+    
     
     int producer_ids[4] = {0, 1, 2, 3}; // Unique IDs for each producer
     int consumer_ids[3] = {0, 1, 2}; // Unique IDs for each producer
