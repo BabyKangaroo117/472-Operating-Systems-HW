@@ -17,21 +17,22 @@
 #define MAX_WORDS       100
 
 typedef struct {
-    const char *filePath;
-    const char *word;
+    char *filePath;
+    char (*words)[MAX_WORD_LENGTH];
+    int lockID;
 } ThreadParams;
 
-int processText(const char *filePath, const char words[][MAX_WORD_LENGTH], uint8_t wordCount);
+int processText(char *filePath, char words[][MAX_WORD_LENGTH], uint8_t wordCount);
+void* distributeLines(void *args);
 void* countWords(void *args);
-int createThreadParams(ThreadParams ***threadParamsList, const char words[][MAX_WORD_LENGTH], const char *filePath, int wordCount);
 
 
 int main() {
     pid_t pid;
-    const char filePaths[NUM_FILE_PATHS][MAX_FILE_LENGTH] = {"bib", "paper1", "paper2", "progc", 
+    char filePaths[NUM_FILE_PATHS][MAX_FILE_LENGTH] = {"bib", "paper1", "paper2", "progc", 
                                                   "progl", "progp", "trans"};
     printf("Check 1\n");
-    const char words[NUM_WORDS][MAX_WORD_LENGTH] = {"the", "hello"};
+    char words[NUM_WORDS][MAX_WORD_LENGTH] = {"the", "Hello"};
 
     for (int i = 0; i < NUM_FILE_PATHS; i++) {
         pid = fork();
@@ -57,75 +58,96 @@ int main() {
 
 }
 
-int processText(const char *filePath, const char words[][MAX_WORD_LENGTH], uint8_t wordCount) {
-    pthread_t threadIDS[wordCount];
-    
-    ThreadParams **threadParamsList;
-    createThreadParams(&threadParamsList, words, filePath, wordCount);
-    for (int i = 0; i < wordCount; i++) {
-        pthread_create(&threadIDS[i], NULL, countWords, threadParamsList[i]);
-    }
+pthread_mutex_t mutexCheckIn;
 
-    for (int i = 0; i < wordCount; i++) {
-        pthread_join(threadIDS[i], NULL);
-    }
+int processText(char *filePath, char words[][MAX_WORD_LENGTH], uint8_t wordCount) {
     
-    
+    ThreadParams threadParams = {filePath, words};
+    pthread_t threadID;
+    pthread_mutex_init(&mutexCheckIn, NULL);
+    pthread_create(&threadID, NULL, distributeLines, &threadParams);
+    if (pthread_join(threadID, NULL) != 0) {
+        perror("Failed to join the thread");
+      }
 
-
-   
     return 0;
 }
 
-int createThreadParams(ThreadParams ***threadParamsList, const char words[][MAX_WORD_LENGTH], const char *filePath, int wordCount) {
+char line[MAX_LINE_LENGTH];
+int finishedThreads;
+int finishedReading;
+int locks[NUM_WORDS];
+void* distributeLines(void *args) {
     
-    *threadParamsList = malloc(wordCount * sizeof(ThreadParams *));
-    if (threadParamsList == NULL) {
-        perror("Failed to allocate memory for thread params list");
-        return EXIT_FAILURE;
+    ThreadParams *threadParams = (ThreadParams*)args;
+
+    pthread_t wordThreads[NUM_WORDS];
+
+    for (int i = 0; i < NUM_WORDS; i++) {
+        threadParams->lockID = i;
+        pthread_create(&wordThreads[i], NULL, countWords, threadParams);
+
     }
 
-    for (int i = 0; i < wordCount; i++) {
-        // Allocate memory for ThreadParams
-        (*threadParamsList)[i] = malloc(sizeof(ThreadParams));
-        if ((*threadParamsList)[i] == NULL) {
-            perror("Failed to allocate memory for thread params");
-            return -1; // Handle memory allocation failure
-        }
 
-        // Set parameters for the thread
-        (*threadParamsList)[i]->filePath = filePath;
-        (*threadParamsList)[i]->word = words[i];
-    }
-
-    return 0;
-
-}
-
-int finished;
-void* countWords(void *args) {
-    ThreadParams* threadParams = (ThreadParams*)args;
-    char line[MAX_LINE_LENGTH];
-    int wordCount = 0;
     FILE *file = fopen(threadParams->filePath, "r");
     if (file == NULL) { // Check if the file was opened successfully
         perror("Failed to open file");
     }
-
+    finishedThreads = NUM_WORDS;
+    finishedReading = 0;
     while (fgets(line, sizeof(line), file)) {
-        char *token = strtok(line, " \n");
-        while (token != NULL) {
-            if (strcmp(token, threadParams->word) == 0) {
-                wordCount++;
-            }
-            token = strtok(NULL, " \n");
+        while (finishedThreads < NUM_WORDS);
+        finishedThreads = 0;
+    }
+   
+    while (finishedThreads < NUM_WORDS);
+    finishedReading = 1;
+
+    
+    for (int i = 0; i < NUM_WORDS; i++) {
+        if (pthread_join(wordThreads[i], NULL) != 0) {
+            perror("Failed to join the thread");
         }
     }
-    finished++;
-    while (finished != NUM_WORDS);
-    fclose(file);
-    printf("Document: %s, Word: %s, Count: %d\n", threadParams->filePath, threadParams->word, wordCount);
-    free(threadParams);
+
+}
+
+void* countWords(void *args) {
+    ThreadParams *threadParams = (ThreadParams*)args;
+    int lock = threadParams->lockID;
+    char *word = threadParams->words[lock];
+    int wordCount = 0;
+    int loops = 0;
+   
+
+        while (true) {
+
+            while (unlock != 1 && finishedReading != 1);
+            if (finishedReading == 1) {
+                break;
+            } 
+
+            while(locks[lock])
+
+            char *token = strtok(line, " \n");
+            while (token != NULL) {
+                if (strcmp(token, word) == 0) {
+                    wordCount++;
+                }
+                token = strtok(NULL, " \n");
+            }
+            pthread_mutex_lock(&mutexCheckIn);
+            finishedThreads++;
+            pthread_mutex_unlock(&mutexCheckIn);
+
+            loops++;
+        }
+
+    printf("Word: %s Count: %d, Loops: %d\n", word, wordCount, loops);
+
+   
+
     pthread_exit(NULL);
     
 }
