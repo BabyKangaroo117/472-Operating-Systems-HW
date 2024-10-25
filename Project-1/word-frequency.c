@@ -8,18 +8,42 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <ctype.h>
 
 // Project Params
-#define NUM_FILES       7
-#define MAX_FILE_LENGTH 10
+#define NUM_FILES              7
+#define NUM_WORDS              1
+#define NUM_THREADS            4
+#define MAX_FILE_LENGTH        10
+#define MAX_WORD_LENGTH        10
+#define READ_FILE_BUFFER_SIZE  100 //KB
+
+void* readFileSection(void* arg);
+void* readFile(void *args);
+
+typedef struct {
+    char *filePath;
+    long start;        // Start position for the thread
+    long length;      // Length to read
+} ThreadData;
+
+static char g_words[NUM_WORDS][MAX_WORD_LENGTH] = {"the"};
+static int g_countWords[NUM_WORDS] = {0};
+pthread_mutex_t mutexCountWords;
 
 int main () {
-
+    int pipefd[NUM_FILES][2];
+    static char filePaths[NUM_FILES][MAX_FILE_LENGTH] = {"bib", "paper1", "paper2", "progc", "progl", "progp", "trans"};
     
-    char filePaths[NUM_FILES][MAX_FILE_LENGTH] = {"bib", "paper1", "paper2", "progc", "progl", "progp", "trans"};
-    
-    // Create process for each file
+    // Create a pipe for each process
+    for (int i = 0; i < NUM_FILES; i++) {
+        if (pipe(pipefd[i]) == -1) {
+            perror("fork failed");
+            exit(1);
+        }
+    }
 
+    // Create a process for each file
     pid_t pid;
     for (int i = 0; i < NUM_FILES; i++) {
         pid = fork();
@@ -28,8 +52,17 @@ int main () {
         }
         // Child processes
         else if (pid == 0) {
-            
+            pthread_t readThread;
+        
+            pthread_mutex_init(&mutexCountWords, NULL);
+            pthread_create(&readThread, NULL, readFile, filePaths[i]);
+            pthread_join(readThread, NULL);
 
+            printf("File: %s \n\rWord Count:\n", filePaths[i]);
+            for (int i = 0; i < NUM_WORDS; i++) {
+                printf("%s: %d \n", g_words[i], g_countWords[i]); 
+            }
+            printf("\n");
             // Child process shouldn't create any more threads
             return 0;
         }
@@ -37,6 +70,102 @@ int main () {
         // Parent process keeps creating more child processes
     }
 
+    for (int i = 0; i < NUM_FILES; i++) {
+        wait(NULL);
+    }
+
     return 0;
 
+}
+
+void* readFile(void *args) {
+    char *filePath = (char*)args;
+    FILE *file = fopen(filePath, "rb");
+    if (file == NULL) {
+        perror("Error opening file");
+        return NULL;
+    }
+
+    // Get the file size
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    fseek(file, 0, SEEK_SET); // Reset to the beginning of the file
+    fclose(file); // Close the file
+
+    long sectionSize = fileSize / NUM_THREADS; // Size of each section
+    pthread_t threads[NUM_THREADS];
+    ThreadData threadData[NUM_THREADS];
+
+    // Allocate buffers for each thread
+    for (int i = 0; i < NUM_THREADS; i++) {
+        threadData[i].filePath = filePath;
+        threadData[i].start = i * sectionSize;
+        threadData[i].length = (i == NUM_THREADS - 1) ? (fileSize - threadData[i].start) : sectionSize; // Last thread takes the remainder
+        pthread_create(&threads[i], NULL, readFileSection, &threadData[i]);
+    }
+
+    // Wait for threads to finish
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    printf("FileSize %d\n", fileSize);
+    return 0;
+}
+
+void* readFileSection(void* arg) {
+    ThreadData* data = (ThreadData*)arg;
+    int countWords[NUM_WORDS] = {0};
+    FILE *file = fopen(data->filePath, "rb");
+    if (file == NULL) {
+        perror("Error opening file");
+        return NULL;
+    }
+
+    // Allocate buffer for the section
+    char *buffer = malloc(data->length + 1);
+    if (buffer == NULL) {
+        fclose(file);
+        return NULL;
+    }
+
+    // Seek to the start position
+    if (fseek(file, data->start, SEEK_SET) != 0) {
+        perror("Error seeking in file");
+        free(buffer);
+        fclose(file);
+        return NULL;
+    }
+
+    // Read the section
+    size_t bytesRead = fread(buffer, 1, data->length, file);
+    buffer[bytesRead] = '\0';  // Ensure null termination
+
+    // Process buffer
+    for (int i = 0; i < NUM_WORDS; i++) {
+        char* pos = buffer;
+        while ((pos = strstr(pos, g_words[i])) != NULL) {
+            // Check if word boundary before
+            int validStart = (pos == buffer) || isspace(*(pos - 1)) || ispunct(*(pos - 1));
+            
+            // Check if word boundary after
+            char* wordEnd = pos + strlen(g_words[i]);
+            int validEnd = (*wordEnd == '\0') || isspace(*wordEnd) || ispunct(*wordEnd);
+            
+            if (validStart && validEnd) {
+                countWords[i]++;
+            }
+            pos++; // Move to next character to continue search
+        }
+    }
+
+    pthread_mutex_lock(&mutexCountWords);
+    for (int i = 0; i < NUM_WORDS; i++) {
+        g_countWords[i] += countWords[i];
+    }
+    pthread_mutex_unlock(&mutexCountWords);
+
+    free(buffer);
+    fclose(file);
+    return NULL;
 }
