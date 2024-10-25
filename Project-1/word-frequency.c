@@ -12,7 +12,7 @@
 
 // Project Params
 #define NUM_FILES              7
-#define NUM_WORDS              1
+#define NUM_WORDS              3
 #define NUM_THREADS            4
 #define MAX_FILE_LENGTH        10
 #define MAX_WORD_LENGTH        10
@@ -27,7 +27,7 @@ typedef struct {
     long length;      // Length to read
 } ThreadData;
 
-static char g_words[NUM_WORDS][MAX_WORD_LENGTH] = {"the"};
+static char g_words[NUM_WORDS][MAX_WORD_LENGTH] = {"the", "be", "it"};
 static int g_countWords[NUM_WORDS] = {0};
 pthread_mutex_t mutexCountWords;
 
@@ -58,20 +58,30 @@ int main () {
             pthread_create(&readThread, NULL, readFile, filePaths[i]);
             pthread_join(readThread, NULL);
 
-            printf("File: %s \n\rWord Count:\n", filePaths[i]);
-            for (int i = 0; i < NUM_WORDS; i++) {
-                printf("%s: %d \n", g_words[i], g_countWords[i]); 
-            }
-            printf("\n");
+            // Close the read end of the pipe
+            close(pipefd[i][0]);
+
+            write(pipefd[i][1], g_countWords, sizeof(int) * NUM_WORDS);
+
             // Child process shouldn't create any more threads
             return 0;
         }
 
-        // Parent process keeps creating more child processes
+        // Close write end of pipe
+        close(pipefd[i][1]);
     }
 
     for (int i = 0; i < NUM_FILES; i++) {
         wait(NULL);
+    }
+
+    int readBuffer[NUM_WORDS] = {0};
+    for (int i = 0; i < NUM_FILES; i++) {
+        read(pipefd[i][0], readBuffer, sizeof(int) * NUM_WORDS);
+        printf("File: %s\n", filePaths[i]);
+        for (int j = 0; j < NUM_WORDS; j++) {
+            printf("%s: %d\n", g_words[j], readBuffer[j]);
+        }
     }
 
     return 0;
