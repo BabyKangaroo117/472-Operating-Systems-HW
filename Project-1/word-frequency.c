@@ -13,7 +13,7 @@
 // Project Params
 #define NUM_FILES              7
 #define NUM_WORDS              3
-#define NUM_THREADS            4
+#define NUM_THREADS            1
 #define MAX_FILE_LENGTH        10
 #define MAX_WORD_LENGTH        10
 #define READ_FILE_BUFFER_SIZE  100 //KB
@@ -66,15 +66,19 @@ int main () {
             // Child process shouldn't create any more threads
             return 0;
         }
+        // Parent Process
 
         // Close write end of pipe
         close(pipefd[i][1]);
     }
 
+    // First parent process that each child branched from
+
     for (int i = 0; i < NUM_FILES; i++) {
         wait(NULL);
     }
 
+    // Read pipe of each child process
     int readBuffer[NUM_WORDS] = {0};
     for (int i = 0; i < NUM_FILES; i++) {
         read(pipefd[i][0], readBuffer, sizeof(int) * NUM_WORDS);
@@ -99,14 +103,14 @@ void* readFile(void *args) {
     // Get the file size
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
-    fseek(file, 0, SEEK_SET); // Reset to the beginning of the file
-    fclose(file); // Close the file
+    fclose(file);
 
-    long sectionSize = fileSize / NUM_THREADS; // Size of each section
+    // Size of each section
+    long sectionSize = fileSize / NUM_THREADS; 
     pthread_t threads[NUM_THREADS];
     ThreadData threadData[NUM_THREADS];
 
-    // Allocate buffers for each thread
+    // Split file into a section for each thread then create threads to count words
     for (int i = 0; i < NUM_THREADS; i++) {
         threadData[i].filePath = filePath;
         threadData[i].start = i * sectionSize;
@@ -119,7 +123,6 @@ void* readFile(void *args) {
         pthread_join(threads[i], NULL);
     }
 
-    printf("FileSize %d\n", fileSize);
     return 0;
 }
 
@@ -169,6 +172,7 @@ void* readFileSection(void* arg) {
         }
     }
 
+    // Combine word counts from each thread
     pthread_mutex_lock(&mutexCountWords);
     for (int i = 0; i < NUM_WORDS; i++) {
         g_countWords[i] += countWords[i];
