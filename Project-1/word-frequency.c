@@ -16,7 +16,6 @@
 #define NUM_THREADS            1
 #define MAX_FILE_LENGTH        10
 #define MAX_WORD_LENGTH        10
-#define READ_FILE_BUFFER_SIZE  100 //KB
 
 void* readFileSection(void* arg);
 void* readFile(void *args);
