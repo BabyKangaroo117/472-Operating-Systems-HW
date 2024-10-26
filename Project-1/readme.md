@@ -6,7 +6,7 @@ The goal of this project is to create a multithreaded, multiprocessing approach 
 
 ## Structure of code
 
-![alt text](Project1-Process-Structure.png)
+![alt text](./Report/Project1-Process-Structure.png)
 
 ### Process Management
 
