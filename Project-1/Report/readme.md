@@ -54,6 +54,7 @@ Average time after 10 trials: 0.0034989 seconds
 #### Results
 There is a slight performance boost when using multiple threads to count words, but is almost neglible. It took a little more than double the time to process 100 words vs 3. This includes the additional step of finding the 100 unique words in the document. This means that the main performance boost is coming from the multiprocessing rather than the multithreading. This is becuase time isnt scaling linearly with the number of words processed, and there is only a slight improvement with multithreading. Since each process can run independently, the additional step of finding the 100 unique words adds less time, as well as the counting of words.
 
+
 ## Top 50 Words
 ![alt text](trans-histogram.png)
 
