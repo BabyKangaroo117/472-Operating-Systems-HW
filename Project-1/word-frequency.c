@@ -9,13 +9,14 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 
 // Project Params
 #define ALL_WORDS           1  
 // #define CHOOSE_WORDS        1
 #define NUM_FILES           7
-#define NUM_WORDS           100
-#define NUM_THREADS         4
+#define NUM_WORDS           130 // Make sure to set this to correct size when selecting own words
+#define NUM_THREADS         1
 #define MAX_FILE_LENGTH     10
 #define MAX_WORD_LENGTH     20
 #define TOP_50              50
@@ -23,8 +24,8 @@
 
 
 
-void* readFileSection(void* arg);
-void* readFile(void *args);
+void* ReadFileSection(void* arg);
+void* ReadFile(void *args);
 void FindAllWords(FILE *file, long fileSize);
 int compare_word_counts(const void* a, const void* b);
 
@@ -40,7 +41,7 @@ typedef struct {
     int count;
 } WordCount;
 
-
+// Set to your own words otherwise find the top 50
 #ifdef CHOOSE_WORDS
     static char g_words[NUM_WORDS][MAX_WORD_LENGTH] = {"the", "be", "it"};
 #elif ALL_WORDS
@@ -52,6 +53,9 @@ static int g_countWords[NUM_WORDS] = {0};
 pthread_mutex_t mutexCountWords;
 
 int main () {
+    clock_t start, end;
+    double cpuTimeUsed;
+
     int pipefd[NUM_FILES][2];
     static char filePaths[NUM_FILES][MAX_FILE_LENGTH] = {"bib", "paper1", "paper2", "progc", "progl", "progp", "trans"};
     
@@ -65,6 +69,9 @@ int main () {
         }
     }
 
+    // Start the clock for processing the files
+    start = clock();
+
     // Create a process for each file
     pid_t pid;
     for (int i = 0; i < NUM_FILES; i++) {
@@ -76,9 +83,20 @@ int main () {
         else if (pid == 0) {
             pthread_t readThread;
         
-            pthread_mutex_init(&mutexCountWords, NULL);
-            pthread_create(&readThread, NULL, readFile, filePaths[i]);
-            pthread_join(readThread, NULL);
+            if (pthread_mutex_init(&mutexCountWords, NULL) != 0) {
+                perror("Failed to initialize mutex");
+                return EXIT_FAILURE;
+            }
+
+            if (pthread_create(&readThread, NULL, ReadFile, filePaths[i]) != 0) {
+                perror("Failed to create ReadFile thread");
+                return EXIT_FAILURE;
+            }
+            
+            if (pthread_join(readThread, NULL) != 0) {
+                perror("Failed to join ReadThread");
+                return EXIT_FAILURE;
+            }
 
             // Close the read end of the pipe
             close(pipefd[i][0]);
@@ -124,19 +142,36 @@ int main () {
     }
 
 
-    char word[MAX_WORD_LENGTH];
-    int count;
+    char word[NUM_FILES][TOP_50][MAX_WORD_LENGTH];
+    int count[NUM_FILES][TOP_50];
 
     #ifdef ALL_WORDS
     for (int i = 0; i < NUM_FILES; i++) {
-        printf("File: %s\n", filePaths[i]);
         for (int j = 0; j < TOP_50; j++) {
-            read(pipefd[i][0], word, MAX_WORD_LENGTH);     // Read word
-            read(pipefd[i][0], &count, sizeof(int));       // Read count
-            printf("%s: %d\n", word, count);
+            read(pipefd[i][0], word[i][j], MAX_WORD_LENGTH);     // Read word
+            read(pipefd[i][0], &count[i][j], sizeof(int));       // Read count
         }
+
+
+        printf("File: %s\n", filePaths[i]);        
+        for (int m = 0; m < TOP_50; m++) {
+           printf("%s\n", word[i][m]);
+        }
+
+        printf("\n\n\n");
+
+        for (int n = 0; n < TOP_50; n++) {
+           printf("%d\n", count[i][n]);
+        }
+
         printf("\n\n\n");
     }
+
+    end = clock();
+    
+    cpuTimeUsed = ((double)(end - start)) / CLOCKS_PER_SEC;
+    printf("Time taken: %f seconds\n", cpuTimeUsed);   
+
     return 0;
     #endif
 
@@ -147,17 +182,20 @@ int main () {
             read(pipefd[i][0], &count, sizeof(int));       // Read count
             printf("%s: %d\n", word, count);
         }
+        printf("\n\n\n");
     }
 
-
-
+    end = clock();
     
+    
+    cpuTimeUsed = ((double)(end - start)) / CLOCKS_PER_SEC;
+    printf("Time taken: %f seconds\n", cpuTimeUsed);
 
     return 0;
 
 }
 
-void* readFile(void *args) {
+void* ReadFile(void *args) {
     char *filePath = (char*)args;
     FILE *file = fopen(filePath, "rb");
     if (file == NULL) {
@@ -187,52 +225,25 @@ void* readFile(void *args) {
         threadData[i].filePath = filePath;
         threadData[i].start = i * sectionSize;
         threadData[i].length = (i == NUM_THREADS - 1) ? (fileSize - threadData[i].start) : sectionSize; // Last thread takes the remainder
-        pthread_create(&threads[i], NULL, readFileSection, &threadData[i]);
+        if (pthread_create(&threads[i], NULL, ReadFileSection, &threadData[i])) {
+            perror("Failed to create ReadFileSection");
+            return NULL;
+        }
     }
 
     // Wait for threads to finish
     for (int i = 0; i < NUM_THREADS; i++) {
-        pthread_join(threads[i], NULL);
+        if (pthread_join(threads[i], NULL) != 0) {
+            perror("Failed to join ReadFileSection");
+            return NULL;
+        }
     }
 
     return 0;
 }
 
-void FindAllWords(FILE *file, long fileSize) {
-    char buffer[fileSize + 1];
-    // Process buffer word by word
-    char* pos = buffer;
-    char* word;
-    int wordCount = 0;
 
-    size_t bytesRead = fread(buffer, 1, fileSize, file);
-    buffer[bytesRead] = '\0';  // Ensure null termination
-    // Use strtok to split buffer into words
-    word = strtok(pos, " \t\n\r\f\v.,;:!?\"'()[]{}"); // Common delimiters
-    while (word != NULL && wordCount < NUM_WORDS) {  // Assuming MAX_WORDS is defined
-        // Check if word is already in g_words
-        int isDuplicate = 0;
-        for (int i = 0; i < wordCount; i++) {
-            if (strcmp(g_words[i], word) == 0) {
-                isDuplicate = 1;
-                break;
-            }
-        }
-        
-        // If not a duplicate, add to g_words
-        if (!isDuplicate) {
-
-            strcpy(g_words[wordCount], word);
-            wordCount++;
-
-        }
-        
-        word = strtok(NULL, " \t\n\r\f\v.,;:!?\"'()[]{}");
-    }
-}
-
-
-void* readFileSection(void* arg) {
+void* ReadFileSection(void* arg) {
     ThreadData* data = (ThreadData*)arg;
     int countWords[NUM_WORDS] = {0};
     FILE *file = fopen(data->filePath, "rb");
@@ -244,6 +255,7 @@ void* readFileSection(void* arg) {
     // Allocate buffer for the section
     char *buffer = malloc(data->length + 1);
     if (buffer == NULL) {
+        perror("Failed to allocate buffer");
         fclose(file);
         return NULL;
     }
@@ -285,9 +297,48 @@ void* readFileSection(void* arg) {
     }
     pthread_mutex_unlock(&mutexCountWords);
 
-    free(buffer);
+    if (buffer != NULL) {
+        free(buffer);
+        buffer = NULL;
+    } else {
+        perror("Attempting to free a NULL pointer");
+    }
+    
     fclose(file);
     return NULL;
+}
+
+void FindAllWords(FILE *file, long fileSize) {
+    char buffer[fileSize + 1];
+    // Process buffer word by word
+    char* pos = buffer;
+    char* word;
+    int wordCount = 0;
+
+    size_t bytesRead = fread(buffer, 1, fileSize, file);
+    buffer[bytesRead] = '\0';  // Ensure null termination
+    // Use strtok to split buffer into words
+    word = strtok(pos, " \t\n\r\f\v.,;:!?\"'()[]{}"); // Common delimiters
+    while (word != NULL && wordCount < NUM_WORDS) {  // Assuming MAX_WORDS is defined
+        // Check if word is already in g_words
+        int isDuplicate = 0;
+        for (int i = 0; i < wordCount; i++) {
+            if (strcmp(g_words[i], word) == 0) {
+                isDuplicate = 1;
+                break;
+            }
+        }
+        
+        // If not a duplicate, add to g_words
+        if (!isDuplicate) {
+
+            strcpy(g_words[wordCount], word);
+            wordCount++;
+
+        }
+        
+        word = strtok(NULL, " \t\n\r\f\v.,;:!?\"'()[]{}");
+    }
 }
 
 // Comparison function for sorting
