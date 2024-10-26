@@ -135,6 +135,7 @@ int main () {
             read(pipefd[i][0], &count, sizeof(int));       // Read count
             printf("%s: %d\n", word, count);
         }
+        printf("\n\n\n");
     }
     return 0;
     #endif
