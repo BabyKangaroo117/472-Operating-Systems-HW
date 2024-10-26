@@ -57,8 +57,6 @@ int main () {
 
     int pipefd[NUM_FILES][2];
     static char filePaths[NUM_FILES][MAX_FILE_LENGTH] = {"bib", "paper1", "paper2", "progc", "progl", "progp", "trans"};
-    
-    //fcntl(fd, F_SETPIPE_SZ, new_size);
 
     // Create a pipe for each process
     for (int i = 0; i < NUM_FILES; i++) {
