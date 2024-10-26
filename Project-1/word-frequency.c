@@ -20,7 +20,6 @@
 #define MAX_FILE_LENGTH     10
 #define MAX_WORD_LENGTH     20
 #define TOP_50              50
-#include <fcntl.h>
 
 
 
@@ -147,22 +146,25 @@ int main () {
 
     #ifdef ALL_WORDS
     for (int i = 0; i < NUM_FILES; i++) {
+        printf("File Path: %s\n", filePaths[i]);
         for (int j = 0; j < TOP_50; j++) {
+            
             read(pipefd[i][0], word[i][j], MAX_WORD_LENGTH);     // Read word
             read(pipefd[i][0], &count[i][j], sizeof(int));       // Read count
+            printf("%s: %d\n", word[i][j], count[i][j]);
         }
 
+        // Use this for histogram creation
+        // printf("File: %s\n", filePaths[i]);        
+        // for (int m = 0; m < TOP_50; m++) {
+        //    printf("%s\n", word[i][m]);
+        // }
 
-        printf("File: %s\n", filePaths[i]);        
-        for (int m = 0; m < TOP_50; m++) {
-           printf("%s\n", word[i][m]);
-        }
+        // printf("\n\n\n");
 
-        printf("\n\n\n");
-
-        for (int n = 0; n < TOP_50; n++) {
-           printf("%d\n", count[i][n]);
-        }
+        // for (int n = 0; n < TOP_50; n++) {
+        //    printf("%d\n", count[i][n]);
+        // }
 
         printf("\n\n\n");
     }
