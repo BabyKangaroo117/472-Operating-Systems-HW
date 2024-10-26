@@ -11,14 +11,22 @@
 #include <ctype.h>
 
 // Project Params
-#define NUM_FILES              7
-#define NUM_WORDS              3
-#define NUM_THREADS            1
-#define MAX_FILE_LENGTH        10
-#define MAX_WORD_LENGTH        10
+#define ALL_WORDS           1  
+// #define CHOOSE_WORDS        1
+#define NUM_FILES           7
+#define NUM_WORDS           100
+#define NUM_THREADS         4
+#define MAX_FILE_LENGTH     10
+#define MAX_WORD_LENGTH     20
+#define TOP_50              50
+#include <fcntl.h>
+
+
 
 void* readFileSection(void* arg);
 void* readFile(void *args);
+void FindAllWords(FILE *file, long fileSize);
+int compare_word_counts(const void* a, const void* b);
 
 typedef struct {
     char *filePath;
@@ -26,7 +34,20 @@ typedef struct {
     long length;      // Length to read
 } ThreadData;
 
-static char g_words[NUM_WORDS][MAX_WORD_LENGTH] = {"the", "be", "it"};
+// Structure to hold word and count pairs for sorting
+typedef struct {
+    char word[MAX_WORD_LENGTH];
+    int count;
+} WordCount;
+
+
+#ifdef CHOOSE_WORDS
+    static char g_words[NUM_WORDS][MAX_WORD_LENGTH] = {"the", "be", "it"};
+#elif ALL_WORDS
+    char g_words[NUM_WORDS][MAX_WORD_LENGTH] = {0};
+#endif
+
+
 static int g_countWords[NUM_WORDS] = {0};
 pthread_mutex_t mutexCountWords;
 
@@ -34,6 +55,8 @@ int main () {
     int pipefd[NUM_FILES][2];
     static char filePaths[NUM_FILES][MAX_FILE_LENGTH] = {"bib", "paper1", "paper2", "progc", "progl", "progp", "trans"};
     
+    //fcntl(fd, F_SETPIPE_SZ, new_size);
+
     // Create a pipe for each process
     for (int i = 0; i < NUM_FILES; i++) {
         if (pipe(pipefd[i]) == -1) {
@@ -60,7 +83,30 @@ int main () {
             // Close the read end of the pipe
             close(pipefd[i][0]);
 
-            write(pipefd[i][1], g_countWords, sizeof(int) * NUM_WORDS);
+            #ifdef ALL_WORDS
+            WordCount sorted_words[NUM_WORDS];
+
+            // Fill the array
+            for (int i = 0; i < NUM_WORDS; i++) {
+                strncpy(sorted_words[i].word, g_words[i], MAX_WORD_LENGTH);
+                sorted_words[i].count = g_countWords[i];
+            }
+
+            // Sort in descending order
+            qsort(sorted_words, NUM_WORDS, sizeof(WordCount), compare_word_counts);
+
+            for (int j = 0; j < TOP_50; j++) {
+                write(pipefd[i][1], sorted_words[j].word, MAX_WORD_LENGTH);  // Send word
+                write(pipefd[i][1], &sorted_words[j].count, sizeof(int));    // Send count
+            }
+            return 0;
+            #endif
+
+            for (int j = 0; j < NUM_WORDS; j++) {
+                write(pipefd[i][1], g_words[j], MAX_WORD_LENGTH);  // Send word
+                write(pipefd[i][1], &g_countWords[j], sizeof(int));  // Send count
+            }
+
 
             // Child process shouldn't create any more threads
             return 0;
@@ -77,15 +123,34 @@ int main () {
         wait(NULL);
     }
 
-    // Read pipe of each child process
-    int readBuffer[NUM_WORDS] = {0};
+
+    char word[MAX_WORD_LENGTH];
+    int count;
+
+    #ifdef ALL_WORDS
     for (int i = 0; i < NUM_FILES; i++) {
-        read(pipefd[i][0], readBuffer, sizeof(int) * NUM_WORDS);
         printf("File: %s\n", filePaths[i]);
-        for (int j = 0; j < NUM_WORDS; j++) {
-            printf("%s: %d\n", g_words[j], readBuffer[j]);
+        for (int j = 0; j < TOP_50; j++) {
+            read(pipefd[i][0], word, MAX_WORD_LENGTH);     // Read word
+            read(pipefd[i][0], &count, sizeof(int));       // Read count
+            printf("%s: %d\n", word, count);
         }
     }
+    return 0;
+    #endif
+
+    for (int i = 0; i < NUM_FILES; i++) {
+        printf("File: %s\n", filePaths[i]);
+        for (int j = 0; j < NUM_WORDS; j++) {
+            read(pipefd[i][0], word, MAX_WORD_LENGTH);     // Read word
+            read(pipefd[i][0], &count, sizeof(int));       // Read count
+            printf("%s: %d\n", word, count);
+        }
+    }
+
+
+
+    
 
     return 0;
 
@@ -102,6 +167,13 @@ void* readFile(void *args) {
     // Get the file size
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
+
+    #ifdef ALL_WORDS
+    fseek(file, 0, SEEK_SET);
+    FindAllWords(file, fileSize);
+    #endif
+
+
     fclose(file);
 
     // Size of each section
@@ -124,6 +196,40 @@ void* readFile(void *args) {
 
     return 0;
 }
+
+void FindAllWords(FILE *file, long fileSize) {
+    char buffer[fileSize + 1];
+    // Process buffer word by word
+    char* pos = buffer;
+    char* word;
+    int wordCount = 0;
+
+    size_t bytesRead = fread(buffer, 1, fileSize, file);
+    buffer[bytesRead] = '\0';  // Ensure null termination
+    // Use strtok to split buffer into words
+    word = strtok(pos, " \t\n\r\f\v.,;:!?\"'()[]{}"); // Common delimiters
+    while (word != NULL && wordCount < NUM_WORDS) {  // Assuming MAX_WORDS is defined
+        // Check if word is already in g_words
+        int isDuplicate = 0;
+        for (int i = 0; i < wordCount; i++) {
+            if (strcmp(g_words[i], word) == 0) {
+                isDuplicate = 1;
+                break;
+            }
+        }
+        
+        // If not a duplicate, add to g_words
+        if (!isDuplicate) {
+
+            strcpy(g_words[wordCount], word);
+            wordCount++;
+
+        }
+        
+        word = strtok(NULL, " \t\n\r\f\v.,;:!?\"'()[]{}");
+    }
+}
+
 
 void* readFileSection(void* arg) {
     ThreadData* data = (ThreadData*)arg;
@@ -181,4 +287,9 @@ void* readFileSection(void* arg) {
     free(buffer);
     fclose(file);
     return NULL;
+}
+
+// Comparison function for sorting
+int compare_word_counts(const void* a, const void* b) {
+    return ((WordCount*)b)->count - ((WordCount*)a)->count;
 }
